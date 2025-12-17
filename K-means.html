@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>K-Means 分群互動（含隨機資料與預覽）</title>
+  <style>
+    body {
+      font-family: "Poppins", "微軟正黑體";
+      background: #f6f7fb;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+    }
+    h1 {
+      color: #333;
+    }
+    #mainContainer {
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+    #controls {
+      margin-bottom: 10px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+    }
+    button {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      transition: 0.2s;
+      color: white;
+      font-size: 15px;
+    }
+    #modeBtn { background: #10ac84; }
+    #startBtn { background: #0078ff; }
+    #resetBtn { background: #ff6b6b; }
+    #randPointsBtn { background: #feca57; color: black; }
+    #randCentroidsBtn { background: #5f27cd; }
+    button:hover { opacity: 0.85; }
+    canvas {
+      border: 2px solid #ddd;
+      border-radius: 12px;
+      background: white;
+    }
+    #previewContainer {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+    #previewCanvas {
+      width: 300px;
+      height: 200px;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>K-Means 分群互動可視化 ✨</h1>
+
+  <div id="controls">
+    <button id="modeBtn">模式：新增資料點 🟡</button>
+    <button id="randPointsBtn">隨機生成資料點 🎲</button>
+    <button id="randCentroidsBtn">隨機生成基準點 🧭</button>
+    <button id="startBtn">開始分群 🚀</button>
+    <button id="resetBtn">清除 🔄</button>
+  </div>
+
+  <div id="mainContainer">
+    <canvas id="canvas" width="600" height="400"></canvas>
+    <div id="previewContainer">
+      <div class="subtitle">📊 分群成果預覽</div>
+      <canvas id="previewCanvas" width="300" height="200"></canvas>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const preview = document.getElementById("previewCanvas");
+    const pctx = preview.getContext("2d");
+    const modeBtn = document.getElementById("modeBtn");
+    const randPointsBtn = document.getElementById("randPointsBtn");
+    const randCentroidsBtn = document.getElementById("randCentroidsBtn");
+    const startBtn = document.getElementById("startBtn");
+    const resetBtn = document.getElementById("resetBtn");
+
+    let mode = "point"; // "point" 或 "centroid"
+    let points = [];
+    let centroids = [];
+    const colors = ["#ff6b6b", "#1dd1a1", "#54a0ff", "#feca57", "#5f27cd", "#10ac84", "#576574"];
+
+    // 切換模式
+    modeBtn.addEventListener("click", () => {
+      if (mode === "point") {
+        mode = "centroid";
+        modeBtn.textContent = "模式：新增基準點 🔴";
+        modeBtn.style.background = "#e17055";
+      } else {
+        mode = "point";
+        modeBtn.textContent = "模式：新增資料點 🟡";
+        modeBtn.style.background = "#10ac84";
+      }
+    });
+
+    // 點擊畫布新增資料或基準點
+    canvas.addEventListener("click", (e) => {
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      if (mode === "point") points.push({ x, y, cluster: -1 });
+      else centroids.push({ x, y, cluster: centroids.length });
+      draw();
+    });
+
+    // 隨機生成資料點
+    randPointsBtn.addEventListener("click", () => {
+      points = [];
+      for (let i = 0; i < 80; i++) {
+        points.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          cluster: -1
+        });
+      }
+      draw();
+    });
+
+    // 隨機生成基準點
+    randCentroidsBtn.addEventListener("click", () => {
+      const k = Math.floor(Math.random() * 4) + 2; // 隨機2~5個群
+      centroids = [];
+      for (let i = 0; i < k; i++) {
+        centroids.push({
+          x: Math.random() * canvas.width,
+          y: Math.random() * canvas.height,
+          cluster: i
+        });
+      }
+      draw();
+    });
+
+    // 清除
+    resetBtn.addEventListener("click", () => {
+      points = [];
+      centroids = [];
+      draw();
+      drawPreview(true);
+    });
+
+    // 開始分群
+    startBtn.addEventListener("click", () => {
+      if (centroids.length === 0) {
+        alert("請先新增或隨機生成至少一個基準點 😅");
+        return;
+      }
+      if (points.length < centroids.length) {
+        alert("資料點要比基準點多 🙈");
+        return;
+      }
+      kMeans();
+    });
+
+    // 畫主畫布
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (const p of points) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 6, 0, Math.PI * 2);
+        ctx.fillStyle = p.cluster >= 0 ? colors[p.cluster] : "#222";
+        ctx.fill();
+      }
+      for (const c of centroids) {
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 10, 0, Math.PI * 2);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = colors[c.cluster % colors.length];
+        ctx.stroke();
+      }
+    }
+
+    function distance(a, b) {
+      return Math.hypot(a.x - b.x, a.y - b.y);
+    }
+
+    // K-Means 主流程
+    function kMeans() {
+      let changed = true;
+      let iteration = 0;
+      const k = centroids.length;
+
+      function step() {
+        if (!changed || iteration > 25) {
+          drawPreview();
+          return;
+        }
+        changed = false;
+
+        // 步驟 1：分配群集
+        for (const p of points) {
+          let best = 0;
+          let bestDist = distance(p, centroids[0]);
+          for (let i = 1; i < k; i++) {
+            const dist = distance(p, centroids[i]);
+            if (dist < bestDist) {
+              best = i;
+              bestDist = dist;
+            }
+          }
+          if (p.cluster !== best) {
+            p.cluster = best;
+            changed = true;
+          }
+        }
+
+        // 步驟 2：更新中心
+        for (let i = 0; i < k; i++) {
+          const clusterPoints = points.filter(p => p.cluster === i);
+          if (clusterPoints.length > 0) {
+            const avgX = clusterPoints.reduce((a, b) => a + b.x, 0) / clusterPoints.length;
+            const avgY = clusterPoints.reduce((a, b) => a + b.y, 0) / clusterPoints.length;
+            centroids[i].x = avgX;
+            centroids[i].y = avgY;
+          }
+        }
+
+        iteration++;
+        draw();
+        requestAnimationFrame(step);
+      }
+      step();
+    }
+
+    // 成果預覽畫布
+    function drawPreview(clear = false) {
+      pctx.clearRect(0, 0, preview.width, preview.height);
+      if (clear || points.length === 0) return;
+      const scaleX = preview.width / canvas.width;
+      const scaleY = preview.height / canvas.height;
+      for (const p of points) {
+        pctx.beginPath();
+        pctx.arc(p.x * scaleX, p.y * scaleY, 4, 0, Math.PI * 2);
+        pctx.fillStyle = p.cluster >= 0 ? colors[p.cluster] : "#444";
+        pctx.fill();
+      }
+      for (const c of centroids) {
+        pctx.beginPath();
+        pctx.arc(c.x * scaleX, c.y * scaleY, 7, 0, Math.PI * 2);
+        pctx.lineWidth = 2;
+        pctx.strokeStyle = colors[c.cluster % colors.length];
+        pctx.stroke();
+      }
+    }
+
+    draw();
+    drawPreview(true);
+  </script>
+</body>
+</html>
